@@ -31,7 +31,7 @@ class Publisher:
                     self._channel.exchange_declare(exchange=self.EXCHANGE, exchange_type=self.TYPE, durable=True)
                     self._logger.info('connected to broker')
                     return
-                except (pika.exceptions.PikaException, OSError) as err:
+                except (pika.exceptions.AMQPError, OSError) as err:
                     if attempt == attempts:
                         raise
                     self._logger.warning('broker connection failed (attempt %s/%s): %s; retrying',
