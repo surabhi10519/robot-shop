@@ -1,5 +1,3 @@
-import random
-
 import instana
 import os
 import sys
@@ -24,6 +22,7 @@ app.logger.setLevel(logging.INFO)
 CART = os.getenv('CART_HOST', 'cart')
 USER = os.getenv('USER_HOST', 'user')
 PAYMENT_GATEWAY = os.getenv('PAYMENT_GATEWAY', 'https://paypal.com/')
+REQUEST_TIMEOUT = int(os.getenv('REQUEST_TIMEOUT_SECONDS', 5))
 
 # Prometheus
 PromMetrics = {}
@@ -44,24 +43,24 @@ def health():
 # Prometheus
 @app.route('/metrics', methods=['GET'])
 def metrics():
-    res = []
-    for m in PromMetrics.values():
-        res.append(prometheus_client.generate_latest(m))
-
-    return Response(res, mimetype='text/plain')
+    return Response(prometheus_client.generate_latest(), mimetype='text/plain')
 
 
 @app.route('/pay/<id>', methods=['POST'])
 def pay(id):
     app.logger.info('payment for {}'.format(id))
-    cart = request.get_json()
+    cart = request.get_json(silent=True)
     app.logger.info(cart)
+
+    if not cart:
+        app.logger.warn('cart not valid')
+        return 'cart not valid', 400
 
     anonymous_user = True
 
     # check user exists
     try:
-        req = requests.get('http://{user}:8080/check/{id}'.format(user=USER, id=id))
+        req = requests.get('http://{user}:8080/check/{id}'.format(user=USER, id=id), timeout=REQUEST_TIMEOUT)
     except requests.exceptions.RequestException as err:
         app.logger.error(err)
         return str(err), 500
@@ -71,7 +70,7 @@ def pay(id):
     # check that the cart is valid
     # this will blow up if the cart is not valid
     has_shipping = False
-    for item in cart.get('items'):
+    for item in cart.get('items', []):
         if item.get('sku') == 'SHIP':
             has_shipping = True
 
@@ -81,7 +80,7 @@ def pay(id):
 
     # dummy call to payment gateway, hope they dont object
     try:
-        req = requests.get(PAYMENT_GATEWAY)
+        req = requests.get(PAYMENT_GATEWAY, timeout=REQUEST_TIMEOUT)
         app.logger.info('{} returned {}'.format(PAYMENT_GATEWAY, req.status_code))
     except requests.exceptions.RequestException as err:
         app.logger.error(err)
@@ -105,7 +104,8 @@ def pay(id):
         try:
             req = requests.post('http://{user}:8080/order/{id}'.format(user=USER, id=id),
                     data=json.dumps({'orderid': orderid, 'cart': cart}),
-                    headers={'Content-Type': 'application/json'})
+                    headers={'Content-Type': 'application/json'},
+                    timeout=REQUEST_TIMEOUT)
             app.logger.info('order history returned {}'.format(req.status_code))
         except requests.exceptions.RequestException as err:
             app.logger.error(err)
@@ -113,13 +113,13 @@ def pay(id):
 
     # delete cart
     try:
-        req = requests.delete('http://{cart}:8080/cart/{id}'.format(cart=CART, id=id));
+        req = requests.delete('http://{cart}:8080/cart/{id}'.format(cart=CART, id=id), timeout=REQUEST_TIMEOUT)
         app.logger.info('cart delete returned {}'.format(req.status_code))
     except requests.exceptions.RequestException as err:
         app.logger.error(err)
         return str(err), 500
     if req.status_code != 200:
-        return 'order history update error', req.status_code
+        return 'cart delete error', req.status_code
 
     return jsonify({ 'orderid': orderid })
 
