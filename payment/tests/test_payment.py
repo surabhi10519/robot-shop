@@ -3,7 +3,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 import requests
 
-from payment import app, isValidCart
+from payment import app, getIntEnv, isValidCart
 
 
 @pytest.fixture
@@ -33,6 +33,16 @@ def test_invalid_cart_is_rejected(cart):
 
 def test_valid_cart_is_accepted():
     assert isValidCart(valid_cart()) is True
+
+
+@pytest.mark.parametrize('value, expected', [('12', 12), ('invalid', 5), (None, 5), ('-2', 0)])
+def test_get_int_env_handles_invalid_values(monkeypatch, value, expected):
+    if value is None:
+        monkeypatch.delenv('TEST_SETTING', raising=False)
+    else:
+        monkeypatch.setenv('TEST_SETTING', value)
+
+    assert getIntEnv('TEST_SETTING', 5) == expected
 
 
 @patch('payment.requests.get')

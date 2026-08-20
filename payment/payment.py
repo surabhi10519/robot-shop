@@ -21,7 +21,17 @@ app.logger.setLevel(logging.INFO)
 CART = os.getenv('CART_HOST', 'cart')
 USER = os.getenv('USER_HOST', 'user')
 PAYMENT_GATEWAY = os.getenv('PAYMENT_GATEWAY', 'https://paypal.com/')
-REQUEST_TIMEOUT = int(os.getenv('REQUEST_TIMEOUT_SECONDS', 5))
+
+
+def getIntEnv(name, default, minimum=0):
+    try:
+        return max(minimum, int(os.getenv(name, default)))
+    except (TypeError, ValueError):
+        app.logger.warning('invalid integer value for %s; using %s', name, default)
+        return default
+
+
+REQUEST_TIMEOUT = getIntEnv('REQUEST_TIMEOUT_SECONDS', 5, minimum=1)
 
 # Prometheus
 PromMetrics = {}
@@ -147,7 +157,7 @@ def queueOrder(order):
     app.logger.info('queue order')
 
     # For screenshot demo requirements optionally add in a bit of delay
-    delay = int(os.getenv('PAYMENT_DELAY_MS', 0))
+    delay = getIntEnv('PAYMENT_DELAY_MS', 0)
     time.sleep(delay / 1000)
 
     headers = {}
